@@ -1,5 +1,8 @@
 # Miii
 
+![miii web](public/ss1.png)
+![miii terminal](public/ss2.png)
+
 Local-first chat UI that talks to **[Ollama](https://ollama.com)** through **[LangGraph](https://langchain-ai.github.io/langgraphjs/)**, with streamed replies and Markdown rendering. Built with [Next.js](https://nextjs.org) (App Router), React 19, Tailwind CSS 4, and UI primitives.
 
 **Author:** AKSHAY MARU

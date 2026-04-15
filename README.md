@@ -1,5 +1,4 @@
 # Miii
-![miii logo](public/miii.png)
 ![miii web](public/ss1.png)
 ![miii terminal](public/ss2.png)
 

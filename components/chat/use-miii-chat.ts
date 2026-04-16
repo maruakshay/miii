@@ -12,10 +12,13 @@ import {
   type StoredConversation,
 } from "@/lib/conversation-storage";
 
+import { normalizeClientChromaUrl } from "@/lib/chroma-url";
+
 import {
   CHROMA_DATABASE_STORAGE,
   CHROMA_KEY_STORAGE,
   CHROMA_TENANT_STORAGE,
+  CHROMA_URL_STORAGE,
   CMD_NO_MODEL,
   TAVILY_KEY_STORAGE,
   WEB_SEARCH_STORAGE,
@@ -58,6 +61,7 @@ export function useMiiiChat() {
   const [chromaApiKey, setChromaApiKey] = React.useState("");
   const [chromaTenant, setChromaTenant] = React.useState("");
   const [chromaDatabase, setChromaDatabase] = React.useState("");
+  const [chromaBaseUrl, setChromaBaseUrl] = React.useState("");
   const [chromaKeyDialogOpen, setChromaKeyDialogOpen] = React.useState(false);
   const [cursorPos, setCursorPos] = React.useState(0);
   const [slashHighlight, setSlashHighlight] = React.useState(0);
@@ -129,6 +133,7 @@ export function useMiiiChat() {
       setChromaApiKey(localStorage.getItem(CHROMA_KEY_STORAGE) ?? "");
       setChromaTenant(localStorage.getItem(CHROMA_TENANT_STORAGE) ?? "");
       setChromaDatabase(localStorage.getItem(CHROMA_DATABASE_STORAGE) ?? "");
+      setChromaBaseUrl(localStorage.getItem(CHROMA_URL_STORAGE) ?? "");
     } catch {
       /* private mode */
     }
@@ -159,18 +164,21 @@ export function useMiiiChat() {
       localStorage.setItem(CHROMA_KEY_STORAGE, chromaApiKey);
       localStorage.setItem(CHROMA_TENANT_STORAGE, chromaTenant);
       localStorage.setItem(CHROMA_DATABASE_STORAGE, chromaDatabase);
+      localStorage.setItem(CHROMA_URL_STORAGE, chromaBaseUrl);
     } catch {
       /* ignore */
     }
-  }, [chromaApiKey, chromaTenant, chromaDatabase, hydrated]);
+  }, [chromaApiKey, chromaTenant, chromaDatabase, chromaBaseUrl, hydrated]);
 
   const chromaRequestHeaders = React.useMemo((): Record<string, string> => {
     const h: Record<string, string> = {};
     if (chromaApiKey.trim()) h["x-chroma-token"] = chromaApiKey.trim();
     if (chromaTenant.trim()) h["x-chroma-tenant"] = chromaTenant.trim();
     if (chromaDatabase.trim()) h["x-chroma-database"] = chromaDatabase.trim();
+    const urlNorm = normalizeClientChromaUrl(chromaBaseUrl);
+    if (urlNorm) h["x-chroma-url"] = urlNorm;
     return h;
-  }, [chromaApiKey, chromaTenant, chromaDatabase]);
+  }, [chromaApiKey, chromaTenant, chromaDatabase, chromaBaseUrl]);
 
   React.useEffect(() => {
     if (!hydrated) return;
@@ -358,6 +366,8 @@ export function useMiiiChat() {
       if (chromaApiKey.trim()) payload.chromaApiKey = chromaApiKey.trim();
       if (chromaTenant.trim()) payload.chromaTenant = chromaTenant.trim();
       if (chromaDatabase.trim()) payload.chromaDatabase = chromaDatabase.trim();
+      const urlNorm = normalizeClientChromaUrl(chromaBaseUrl);
+      if (urlNorm) payload.chromaUrl = urlNorm;
 
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -503,6 +513,7 @@ export function useMiiiChat() {
       chromaApiKey,
       chromaTenant,
       chromaDatabase,
+      chromaBaseUrl,
       activeConversation?.systemPrompt,
       activeConversation?.chromaCollectionName,
       updateActiveMessages,
@@ -679,6 +690,8 @@ export function useMiiiChat() {
     setChromaTenant,
     chromaDatabase,
     setChromaDatabase,
+    chromaBaseUrl,
+    setChromaBaseUrl,
     chromaKeyDialogOpen,
     setChromaKeyDialogOpen,
     chromaRequestHeaders,

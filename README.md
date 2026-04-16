@@ -48,7 +48,7 @@ miii solves this by providing:
 
 - **Document context** — Optional **[Chroma](https://www.trychroma.com/)** collection per conversation. The last user message is embedded, relevant chunks are retrieved, and context is injected into the system message for that request.
 - **Credentials** — Chroma Cloud / multi-tenant headers (token, tenant, database) can be set in the app and are sent with chat and RAG API calls; optional server-side defaults via env (see [Configuration](#configuration)).
-- **Ingest** — **Index into Chroma** in the sidebar uploads pasted text or files (`POST /api/rag/ingest`); requires a running Chroma (e.g. `chroma run`) or reachable `CHROMA_URL`.
+- **Ingest** — **Index into Chroma** in the sidebar uploads pasted text or files (`POST /api/rag/ingest`); requires a running Chroma (from the repo: `npm run chroma`, or `npx chroma run` after `npm install`) or a reachable `CHROMA_URL`.
 
 ### Terminal UI (TUI)
 
@@ -70,7 +70,7 @@ The composer supports a **slash menu** (type `/` at the start of a line) for qui
 
 - [Node.js](https://nodejs.org) 20+
 - [Ollama](https://ollama.com) installed and running, with at least one model pulled (for example `ollama pull llama3.2`)
-- For RAG: Chroma reachable locally or remotely; for embeddings, an Ollama embedding model (default `nomic-embed-text` unless overridden)
+- For RAG: Chroma reachable locally or remotely. The **`chroma` CLI is not on your PATH** unless you install it globally; this repo already depends on **`chromadb`**, so start the server from the project root with **`npm run chroma`** (uses `node_modules/.bin/chroma`). Alternatively: `npx chroma run`. Default URL is `http://127.0.0.1:8000` (override with `CHROMA_URL`). For embeddings, use an Ollama embedding model (default `nomic-embed-text` unless overridden)—run e.g. `ollama pull nomic-embed-text`.
 
 
 ## Configuration
@@ -163,6 +163,7 @@ npm run dev
 | `npm run build` | Production build      |
 | `npm run start` | Run production server |
 | `npm run lint`  | ESLint                |
+| `npm run chroma`| Local Chroma server (`chroma run`, default port 8000) for RAG |
 | `npm run tui`   | Terminal UI           |
 
 

@@ -487,7 +487,7 @@ function App({ initialUrl }: { initialUrl: string }) {
       return;
     }
     const hist = rowsState.filter(
-      (r) => r.role === "user" | r.role === "assistant",
+      (r) => r.role === "user" || r.role === "assistant",
     );
     if (hist.length < 2 || hist[hist.length - 1]?.role !== "assistant") {
       pushSystem("Nothing to regenerate (need a user message then an assistant reply).");

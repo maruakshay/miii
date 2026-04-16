@@ -1,11 +1,16 @@
 import { ChromaConnectionError } from "chromadb";
 import { NextResponse } from "next/server";
 
-import { chromaAuthFromRequest, getChromaClient } from "@/lib/rag-chroma";
+import {
+  chromaAuthFromRequest,
+  getChromaClient,
+  resolveChromaBaseUrl,
+} from "@/lib/rag-chroma";
 
 export async function GET(req: Request) {
+  const baseUrl = resolveChromaBaseUrl(req);
   try {
-    const client = getChromaClient(chromaAuthFromRequest(req));
+    const client = getChromaClient(chromaAuthFromRequest(req), baseUrl);
     const cols = await client.listCollections();
     const names = cols
       .map((c) => c.name)
@@ -17,8 +22,7 @@ export async function GET(req: Request) {
       return NextResponse.json({
         collections: [] as string[],
         connected: false,
-        message:
-          "Chroma is not running or not reachable. Start it (e.g. chroma run) or set CHROMA_URL.",
+        message: `Chroma is not running or not reachable at ${baseUrl}. From the repo run npm run chroma (or npx chroma run), set CHROMA_URL on the server, or set the Chroma URL in the app (sidebar → Chroma).`,
       });
     }
     const message = e instanceof Error ? e.message : "Chroma unavailable";

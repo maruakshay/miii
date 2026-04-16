@@ -1,5 +1,6 @@
 import { ChromaClient } from "chromadb";
 
+import { isLoopbackHost, normalizeClientChromaUrl } from "@/lib/chroma-url";
 import { getOllamaBaseUrl } from "@/lib/ollama";
 
 export type ChromaAuthOptions = {
@@ -13,6 +14,22 @@ export function getChromaUrl(): string {
   return process.env.CHROMA_URL?.trim() || "http://127.0.0.1:8000";
 }
 
+/**
+ * Prefer optional loopback URL from client header, then server env / default.
+ */
+export function resolveChromaBaseUrl(req: Request): string {
+  const fromHeader = normalizeClientChromaUrl(req.headers.get("x-chroma-url"));
+  if (fromHeader) return fromHeader;
+  return getChromaUrl();
+}
+
+/** Resolve base URL for /api/chat from optional JSON field (same rules as header). */
+export function resolveChromaBaseUrlFromBody(bodyChromaUrl: string | undefined): string {
+  const fromBody = normalizeClientChromaUrl(bodyChromaUrl);
+  if (fromBody) return fromBody;
+  return getChromaUrl();
+}
+
 export function getOllamaEmbedModel(): string {
   return process.env.OLLAMA_EMBED_MODEL?.trim() || "nomic-embed-text";
 }
@@ -20,19 +37,27 @@ export function getOllamaEmbedModel(): string {
 function parseChromaUrl(urlStr: string): { host: string; port: number; ssl: boolean } {
   const url = new URL(urlStr);
   const ssl = url.protocol === "https:";
-  const port = url.port
+  let port = url.port
     ? parseInt(url.port, 10)
     : ssl
       ? 443
       : 80;
+  // Chroma’s local HTTP API defaults to 8000; `http://localhost` without a port must not become :80.
+  if (!url.port && !ssl && isLoopbackHost(url.hostname)) {
+    port = 8000;
+  }
   return { host: url.hostname, port, ssl };
 }
 
 /**
  * Optional auth merges client-provided token with server env (`CHROMA_API_KEY`, etc.).
  */
-export function getChromaClient(opts?: ChromaAuthOptions): ChromaClient {
-  const { host, port, ssl } = parseChromaUrl(getChromaUrl());
+export function getChromaClient(
+  opts?: ChromaAuthOptions,
+  baseUrlOverride?: string,
+): ChromaClient {
+  const base = (baseUrlOverride ?? getChromaUrl()).trim();
+  const { host, port, ssl } = parseChromaUrl(base);
   const apiKey =
     opts?.apiKey?.trim() || process.env.CHROMA_API_KEY?.trim() || "";
   const tenant =
@@ -108,8 +133,9 @@ export async function ingestTextIntoCollection(
   text: string,
   sourceLabel?: string,
   auth?: ChromaAuthOptions,
+  chromaBaseUrl?: string,
 ): Promise<{ chunks: number }> {
-  const client = getChromaClient(auth);
+  const client = getChromaClient(auth, chromaBaseUrl);
   const collection = await client.getOrCreateCollection({
     name: collectionName,
     metadata: { source: "miii-rag" },
@@ -140,10 +166,11 @@ export async function queryCollectionContext(
   query: string,
   k = 5,
   auth?: ChromaAuthOptions,
+  chromaBaseUrl?: string,
 ): Promise<string | null> {
   const q = query.trim();
   if (!q) return null;
-  const client = getChromaClient(auth);
+  const client = getChromaClient(auth, chromaBaseUrl);
   let collection;
   try {
     collection = await client.getCollection({ name: collectionName });

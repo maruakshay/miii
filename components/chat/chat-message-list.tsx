@@ -1,7 +1,8 @@
 "use client";
 
 import type { RefObject } from "react";
-import { Loader2Icon, Pencil, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Check, Copy, Loader2Icon, Pencil, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -86,6 +87,29 @@ export function ChatMessageList({
   onCommitEdit,
   onRegenerate,
 }: Props) {
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const copyAssistantContent = useCallback(async (id: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      if (copyResetRef.current) clearTimeout(copyResetRef.current);
+      copyResetRef.current = setTimeout(() => {
+        setCopiedId(null);
+        copyResetRef.current = null;
+      }, 2000);
+    } catch {
+      // Clipboard may be unavailable (permissions, insecure context).
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (copyResetRef.current) clearTimeout(copyResetRef.current);
+    };
+  }, []);
+
   const last = messages[messages.length - 1];
   const showThinking =
     hydrated && sending && last?.role === "user";
@@ -205,6 +229,24 @@ export function ChatMessageList({
                   <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8a8475]">
                     Miii
                   </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1 px-2 text-[11px] text-[#6b6558]"
+                    disabled={!m.content.trim()}
+                    aria-label={
+                      copiedId === m.id ? "Copied" : "Copy assistant message"
+                    }
+                    onClick={() => void copyAssistantContent(m.id, m.content)}
+                  >
+                    {copiedId === m.id ? (
+                      <Check className="size-3" />
+                    ) : (
+                      <Copy className="size-3" />
+                    )}
+                    {copiedId === m.id ? "Copied" : "Copy"}
+                  </Button>
                 </div>
                 <div>
                   <MarkdownContent className="text-[15px] leading-[1.65] text-[#3d3929]">

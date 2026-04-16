@@ -10,6 +10,7 @@ import { resolveTavilyApiKey } from "@/lib/chat-tools";
 import {
   type ChromaAuthOptions,
   queryCollectionContext,
+  resolveChromaBaseUrlFromBody,
 } from "@/lib/rag-chroma";
 
 export const maxDuration = 120;
@@ -115,6 +116,16 @@ export async function POST(req: Request) {
       ? (body as { chromaDatabase: string }).chromaDatabase.trim()
       : "";
 
+  const chromaUrlBody =
+    typeof body === "object" &&
+    body !== null &&
+    "chromaUrl" in body &&
+    typeof (body as { chromaUrl?: unknown }).chromaUrl === "string"
+      ? (body as { chromaUrl: string }).chromaUrl.trim()
+      : "";
+
+  const chromaBaseUrl = resolveChromaBaseUrlFromBody(chromaUrlBody);
+
   const chromaAuth: ChromaAuthOptions | undefined =
     chromaApiKey || chromaTenant || chromaDatabase
       ? {
@@ -178,6 +189,7 @@ export async function POST(req: Request) {
         lastUser,
         5,
         chromaAuth,
+        chromaBaseUrl,
       );
     } catch (e) {
       const message =

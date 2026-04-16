@@ -1,12 +1,17 @@
 import { ChromaConnectionError } from "chromadb";
 import { NextResponse } from "next/server";
 
-import { chromaAuthFromRequest, ingestTextIntoCollection } from "@/lib/rag-chroma";
+import {
+  chromaAuthFromRequest,
+  ingestTextIntoCollection,
+  resolveChromaBaseUrl,
+} from "@/lib/rag-chroma";
 
 const NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/;
 
 export async function POST(req: Request) {
   const auth = chromaAuthFromRequest(req);
+  const chromaBaseUrl = resolveChromaBaseUrl(req);
   const ct = req.headers.get("content-type") ?? "";
 
   if (ct.includes("multipart/form-data")) {
@@ -63,6 +68,7 @@ export async function POST(req: Request) {
         combined,
         source,
         auth,
+        chromaBaseUrl,
       );
       return NextResponse.json({
         ok: true,
@@ -73,8 +79,7 @@ export async function POST(req: Request) {
       if (e instanceof ChromaConnectionError) {
         return NextResponse.json(
           {
-            error:
-              "Cannot reach Chroma. Check CHROMA_URL, run chroma, or set your API token.",
+            error: `Cannot reach Chroma at ${chromaBaseUrl}. Start the server in another terminal (npm run chroma), check CHROMA_URL / the Chroma URL in the app, or your Cloud token.`,
           },
           { status: 503 },
         );
@@ -132,6 +137,7 @@ export async function POST(req: Request) {
       text,
       source,
       auth,
+      chromaBaseUrl,
     );
     return NextResponse.json({
       ok: true,
@@ -142,8 +148,7 @@ export async function POST(req: Request) {
     if (e instanceof ChromaConnectionError) {
       return NextResponse.json(
         {
-          error:
-            "Cannot reach Chroma. Check CHROMA_URL, run chroma, or set your API token.",
+          error: `Cannot reach Chroma at ${chromaBaseUrl}. Start the server in another terminal (npm run chroma), check CHROMA_URL / the Chroma URL in the app, or your Cloud token.`,
         },
         { status: 503 },
       );

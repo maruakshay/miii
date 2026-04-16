@@ -18,8 +18,26 @@ type ChatRow = { role: "user" | "assistant" | "system"; text: string };
 
 type NdLine =
   | { type: "token"; t: string }
+  | {
+      type: "meta";
+      promptEvalCount?: number;
+      evalCount?: number;
+      totalDurationNs?: number;
+    }
   | { type: "done" }
   | { type: "error"; message: string };
+
+type ChatApiPayload = {
+  model: string;
+  messages: { role: "user" | "assistant" | "system"; content: string }[];
+  webSearch: boolean;
+  tavilyApiKey: string;
+  systemPrompt?: string;
+  ragCollection?: string;
+  chromaApiKey?: string;
+  chromaTenant?: string;
+  chromaDatabase?: string;
+};
 
 function parseArgs(argv: string[]): { url: string } {
   const envUrl = process.env.MIIIBOT_URL?.trim();
@@ -41,14 +59,126 @@ async function fetchModels(baseUrl: string): Promise<string[]> {
   return data.models ?? [];
 }
 
+function buildChatPayload(
+  base: Omit<ChatApiPayload, "systemPrompt" | "ragCollection"> & {
+    systemPrompt: string;
+    ragCollection: string;
+    chromaApiKey: string;
+    chromaTenant: string;
+    chromaDatabase: string;
+  },
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    model: base.model,
+    messages: base.messages,
+    webSearch: base.webSearch,
+    tavilyApiKey: base.tavilyApiKey,
+  };
+  const sys = base.systemPrompt.trim();
+  if (sys) payload.systemPrompt = sys;
+  const rag = base.ragCollection.trim();
+  if (rag) payload.ragCollection = rag;
+  if (base.chromaApiKey.trim()) payload.chromaApiKey = base.chromaApiKey.trim();
+  if (base.chromaTenant.trim()) payload.chromaTenant = base.chromaTenant.trim();
+  if (base.chromaDatabase.trim())
+    payload.chromaDatabase = base.chromaDatabase.trim();
+  return payload;
+}
+
+function chromaHeadersFromState(opts: {
+  chromaApiKey: string;
+  chromaTenant: string;
+  chromaDatabase: string;
+}): Record<string, string> {
+  const h: Record<string, string> = {};
+  if (opts.chromaApiKey.trim()) h["x-chroma-token"] = opts.chromaApiKey.trim();
+  if (opts.chromaTenant.trim()) h["x-chroma-tenant"] = opts.chromaTenant.trim();
+  if (opts.chromaDatabase.trim())
+    h["x-chroma-database"] = opts.chromaDatabase.trim();
+  return h;
+}
+
+async function fetchRagCollections(
+  baseUrl: string,
+  headers: Record<string, string>,
+): Promise<{ collections: string[]; message?: string; connected?: boolean }> {
+  const res = await fetch(`${baseUrl}/api/rag/collections`, {
+    headers: { Accept: "application/json", ...headers },
+  });
+  const data = (await res.json()) as {
+    collections?: string[];
+    message?: string;
+    connected?: boolean;
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.error ?? `HTTP ${res.status}`);
+  }
+  return {
+    collections: data.collections ?? [],
+    message: data.message,
+    connected: data.connected,
+  };
+}
+
+async function streamOllamaPull(
+  baseUrl: string,
+  model: string,
+  onStatus: (line: string) => void,
+): Promise<void> {
+  const res = await fetch(`${baseUrl}/api/ollama/pull`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
+    body: JSON.stringify({ model }),
+  });
+  if (!res.ok) {
+    let msg = res.statusText;
+    try {
+      const j = (await res.json()) as { error?: string };
+      msg = j.error ?? msg;
+    } catch {
+      msg = (await res.text()) || msg;
+    }
+    throw new Error(msg);
+  }
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("No pull stream body");
+  const dec = new TextDecoder();
+  let carry = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    carry += dec.decode(value, { stream: true });
+    const parts = carry.split("\n");
+    carry = parts.pop() ?? "";
+    for (const line of parts) {
+      if (!line.trim()) continue;
+      try {
+        const obj = JSON.parse(line) as {
+          status?: string;
+          digest?: string;
+        };
+        let piece = obj.status;
+        if (!piece && obj.digest) piece = `digest ${obj.digest}`;
+        if (piece) onStatus(piece);
+      } catch {
+        onStatus(line);
+      }
+    }
+  }
+  if (carry.trim()) {
+    try {
+      const obj = JSON.parse(carry) as { status?: string };
+      if (obj.status) onStatus(obj.status);
+    } catch {
+      onStatus(carry.trim());
+    }
+  }
+}
+
 async function streamChat(
   baseUrl: string,
-  payload: {
-    model: string;
-    messages: { role: "user" | "assistant" | "system"; content: string }[];
-    webSearch: boolean;
-    tavilyApiKey: string;
-  },
+  payload: Record<string, unknown>,
   onToken: (t: string) => void,
 ): Promise<void> {
   const res = await fetch(`${baseUrl}/api/chat`, {
@@ -63,7 +193,10 @@ async function streamChat(
   if (!res.ok) {
     let msg = res.statusText;
     try {
-      const j = (await res.json()) as { error?: string; message?: string };
+      const j = (await res.json()) as {
+        error?: string;
+        message?: string;
+      };
       msg = j.message ?? j.error ?? msg;
     } catch {
       try {
@@ -197,12 +330,22 @@ function App({ initialUrl }: { initialUrl: string }) {
   const [rowsState, setRowsState] = useState<ChatRow[]>([
     {
       role: "system",
-      text: "Miii TUI — /help for commands. Ensure `npm run dev` is running.",
+      text:
+        "Miii TUI — /help for commands (parity with web: RAG, system prompt, pull). Ensure `npm run dev` is running.",
     },
   ]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pullBusy, setPullBusy] = useState(false);
   const [webSearch, setWebSearch] = useState(false);
+  const [tavilyApiKey, setTavilyApiKey] = useState(
+    () => process.env.TAVILY_API_KEY?.trim() ?? "",
+  );
+  const [systemPrompt, setSystemPrompt] = useState("");
+  const [ragCollection, setRagCollection] = useState("");
+  const [chromaApiKey, setChromaApiKey] = useState("");
+  const [chromaTenant, setChromaTenant] = useState("");
+  const [chromaDatabase, setChromaDatabase] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -245,6 +388,16 @@ function App({ initialUrl }: { initialUrl: string }) {
     setRowsState((prev) => [...prev, { role: "system", text }]);
   }, []);
 
+  const chromaHdr = useMemo(
+    () =>
+      chromaHeadersFromState({
+        chromaApiKey,
+        chromaTenant,
+        chromaDatabase,
+      }),
+    [chromaApiKey, chromaTenant, chromaDatabase],
+  );
+
   const runChat = useCallback(
     async (userText: string) => {
       const m = model.trim();
@@ -270,31 +423,32 @@ function App({ initialUrl }: { initialUrl: string }) {
         { role: "assistant", text: "" },
       ]);
 
-      const tavilyKey = process.env.TAVILY_API_KEY?.trim() ?? "";
+      const payload = buildChatPayload({
+        model: m,
+        messages,
+        webSearch,
+        tavilyApiKey: tavilyApiKey,
+        systemPrompt,
+        ragCollection,
+        chromaApiKey,
+        chromaTenant,
+        chromaDatabase,
+      });
 
       try {
-        await streamChat(
-          baseUrl,
-          {
-            model: m,
-            messages,
-            webSearch,
-            tavilyApiKey: tavilyKey,
-          },
-          (t) => {
-            setRowsState((prev) => {
-              const next = [...prev];
-              const last = next[next.length - 1];
-              if (last?.role === "assistant") {
-                next[next.length - 1] = {
-                  role: "assistant",
-                  text: last.text + t,
-                };
-              }
-              return next;
-            });
-          },
-        );
+        await streamChat(baseUrl, payload, (t) => {
+          setRowsState((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last?.role === "assistant") {
+              next[next.length - 1] = {
+                role: "assistant",
+                text: last.text + t,
+              };
+            }
+            return next;
+          });
+        });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         setRowsState((prev) => {
@@ -311,8 +465,94 @@ function App({ initialUrl }: { initialUrl: string }) {
         setBusy(false);
       }
     },
-    [baseUrl, model, rowsState, webSearch, pushSystem],
+    [
+      baseUrl,
+      model,
+      rowsState,
+      webSearch,
+      tavilyApiKey,
+      systemPrompt,
+      ragCollection,
+      chromaApiKey,
+      chromaTenant,
+      chromaDatabase,
+      pushSystem,
+    ],
   );
+
+  const regenerateLast = useCallback(async () => {
+    const m = model.trim();
+    if (!m) {
+      pushSystem("Set a model first: /model <ollama-model>");
+      return;
+    }
+    const hist = rowsState.filter(
+      (r) => r.role === "user" | r.role === "assistant",
+    );
+    if (hist.length < 2 || hist[hist.length - 1]?.role !== "assistant") {
+      pushSystem("Nothing to regenerate (need a user message then an assistant reply).");
+      return;
+    }
+    const baseRows = rowsState.slice(0, -1);
+    const threadForApi = hist.slice(0, -1).map((r) => ({
+      role: r.role as "user" | "assistant",
+      content: r.text,
+    }));
+
+    setBusy(true);
+    setRowsState([...baseRows, { role: "assistant", text: "" }]);
+
+    const payload = buildChatPayload({
+      model: m,
+      messages: threadForApi,
+      webSearch,
+      tavilyApiKey,
+      systemPrompt,
+      ragCollection,
+      chromaApiKey,
+      chromaTenant,
+      chromaDatabase,
+    });
+
+    try {
+      await streamChat(baseUrl, payload, (t) => {
+        setRowsState((prev) => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last?.role === "assistant") {
+            next[next.length - 1] = { role: "assistant", text: last.text + t };
+          }
+          return next;
+        });
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setRowsState((prev) => {
+        const next = [...prev];
+        if (
+          next[next.length - 1]?.role === "assistant" &&
+          !next[next.length - 1].text
+        ) {
+          next.pop();
+        }
+        return [...next, { role: "system", text: `Error: ${msg}` }];
+      });
+    } finally {
+      setBusy(false);
+    }
+  }, [
+    baseUrl,
+    model,
+    rowsState,
+    webSearch,
+    tavilyApiKey,
+    systemPrompt,
+    ragCollection,
+    chromaApiKey,
+    chromaTenant,
+    chromaDatabase,
+    pushSystem,
+  ]);
 
   const handleSubmit = useCallback(
     (value: string) => {
@@ -325,14 +565,35 @@ function App({ initialUrl }: { initialUrl: string }) {
           [
             "/help /? — this help",
             "/quit /exit — leave",
-            "/clear — clear transcript",
+            "/new — new chat (clears messages; resets system prompt & RAG collection for this session)",
+            "/clear — clear messages only (keeps system prompt & RAG selection)",
+            "/clear all — same as /new (one local session; matches “delete all chats”)",
+            "/regenerate — redo last assistant reply (same user message)",
             "/models — refresh model list from API",
             "/model — show current model",
             "/model <name> — set Ollama model tag",
             `/url <base> — API base (default ${initialUrl})`,
-            "/web on|off — toggle Tavily web search (needs TAVILY_API_KEY on server or in env)",
+            "/web on|off — toggle Tavily web search",
+            "/web — show web search state (use /tavily set <key> if you see TAVILY_KEY_REQUIRED)",
+            "/tavily — show whether a key is set (masked)",
+            "/tavily set <key> — Tavily API key for this session",
+            "/tavily clear — remove stored key (falls back to env at process start only)",
+            "/system — show custom system prompt",
+            "/system clear — clear custom system prompt",
+            "/system <text> — one-line system prompt (use \\n for newline)",
+            "/rag — show selected Chroma collection",
+            "/rag none — no RAG context",
+            "/rag list — list collections (uses /chroma headers if set)",
+            "/rag <name> — attach collection for the next sends",
+            "/chroma — Chroma Cloud / multi-tenant header help",
+            "/chroma key|tenant|database <value> — set header (omit value to clear that field)",
+            "/chroma clear — clear key, tenant, and database",
+            "/pull <model> — pull model via Ollama (streams status)",
+            "/tools — add custom skills (open the web UI; server-side files)",
+            "/delete-tool — remove a skill (web UI)",
             "—",
-            "Env: MIIIBOT_URL, TAVILY_API_KEY",
+            "Env: MIIIBOT_URL, TAVILY_API_KEY (default key at startup)",
+            "Index documents into Chroma from the web UI (RAG ingest dialog).",
           ].join("\n"),
         );
         return;
@@ -341,8 +602,32 @@ function App({ initialUrl }: { initialUrl: string }) {
         exit();
         return;
       }
+      if (text === "/new" || text === "/clear all") {
+        setSystemPrompt("");
+        setRagCollection("");
+        setRowsState([
+          {
+            role: "system",
+            text: "New chat — messages cleared; system prompt and RAG collection reset.",
+          },
+        ]);
+        return;
+      }
       if (text === "/clear") {
-        setRowsState([{ role: "system", text: "Transcript cleared." }]);
+        setRowsState([
+          {
+            role: "system",
+            text: "Messages cleared (system prompt and RAG selection unchanged).",
+          },
+        ]);
+        return;
+      }
+      if (text === "/regenerate") {
+        if (busy || pullBusy) {
+          pushSystem("Wait for the current operation to finish.");
+          return;
+        }
+        void regenerateLast();
         return;
       }
       if (text === "/models") {
@@ -380,10 +665,21 @@ function App({ initialUrl }: { initialUrl: string }) {
         pushSystem(`URL set to ${rest} (re-fetching models…)`);
         return;
       }
+      if (text === "/web") {
+        pushSystem(
+          [
+            `Web search: ${webSearch ? "on" : "off"}`,
+            tavilyApiKey.trim()
+              ? "Tavily key: set (masked in /tavily)"
+              : "Tavily key: not set — use /tavily set <key> or TAVILY_API_KEY",
+          ].join("\n"),
+        );
+        return;
+      }
       if (text === "/web on") {
         setWebSearch(true);
         pushSystem(
-          "Web search ON (requires Tavily key on server or TAVILY_API_KEY).",
+          "Web search ON — ensure a Tavily key is set (/tavily set) or server TAVILY_API_KEY.",
         );
         return;
       }
@@ -392,14 +688,195 @@ function App({ initialUrl }: { initialUrl: string }) {
         pushSystem("Web search OFF.");
         return;
       }
+      if (text === "/tavily" || text === "/tavily clear") {
+        if (text === "/tavily clear") {
+          setTavilyApiKey("");
+          pushSystem("Tavily key cleared for this session.");
+          return;
+        }
+        pushSystem(
+          tavilyApiKey.trim()
+            ? `Tavily key is set (${tavilyApiKey.length} chars). Use /tavily clear to remove.`
+            : "No Tavily key in session. Set with /tavily set <key> or TAVILY_API_KEY env.",
+        );
+        return;
+      }
+      if (text.startsWith("/tavily set ")) {
+        const k = text.slice("/tavily set ".length).trim();
+        if (!k) {
+          pushSystem("Usage: /tavily set <api-key>");
+          return;
+        }
+        setTavilyApiKey(k);
+        pushSystem("Tavily key saved for this session.");
+        return;
+      }
+      if (text.startsWith("/system")) {
+        const rest = text.slice("/system".length).trim();
+        if (!rest) {
+          pushSystem(
+            systemPrompt.trim()
+              ? `System prompt:\n${systemPrompt}`
+              : "No custom system prompt (default Miii behavior).",
+          );
+          return;
+        }
+        if (rest === "clear") {
+          setSystemPrompt("");
+          pushSystem("System prompt cleared.");
+          return;
+        }
+        setSystemPrompt(rest.replace(/\\n/g, "\n"));
+        pushSystem("System prompt updated.");
+        return;
+      }
+      if (text.startsWith("/rag")) {
+        const rest = text.slice("/rag".length).trim();
+        if (!rest) {
+          pushSystem(
+            ragCollection.trim()
+              ? `RAG collection: ${ragCollection}`
+              : "RAG: none (no Chroma collection).",
+          );
+          return;
+        }
+        if (rest === "none") {
+          setRagCollection("");
+          pushSystem("RAG collection cleared.");
+          return;
+        }
+        if (rest === "list") {
+          void (async () => {
+            try {
+              const { collections, message, connected } =
+                await fetchRagCollections(baseUrl, chromaHdr);
+              if (connected === false && message) {
+                pushSystem(`${message}\n(collections: ${collections.join(", ") || "(none)"})`);
+                return;
+              }
+              pushSystem(
+                collections.length
+                  ? collections.join(", ")
+                  : "(no collections — ingest from web UI or Chroma CLI)",
+              );
+            } catch (e) {
+              pushSystem(e instanceof Error ? e.message : String(e));
+            }
+          })();
+          return;
+        }
+        setRagCollection(rest);
+        pushSystem(`RAG collection set to “${rest}”.`);
+        return;
+      }
+      if (text === "/chroma") {
+        pushSystem(
+          [
+            "Chroma optional headers (Cloud / multi-tenant), sent with RAG and /rag list:",
+            "/chroma key <token>   — x-chroma-token",
+            "/chroma tenant <id>   — x-chroma-tenant",
+            "/chroma database <id> — x-chroma-database",
+            "/chroma clear — clear all three",
+          ].join("\n"),
+        );
+        return;
+      }
+      if (text === "/chroma clear") {
+        setChromaApiKey("");
+        setChromaTenant("");
+        setChromaDatabase("");
+        pushSystem("Chroma headers cleared.");
+        return;
+      }
+      if (text.startsWith("/chroma key")) {
+        const v = text.slice("/chroma key".length).trim();
+        setChromaApiKey(v);
+        pushSystem(v ? "Chroma key set." : "Chroma key cleared.");
+        return;
+      }
+      if (text.startsWith("/chroma tenant")) {
+        const v = text.slice("/chroma tenant".length).trim();
+        setChromaTenant(v);
+        pushSystem(v ? "Chroma tenant set." : "Chroma tenant cleared.");
+        return;
+      }
+      if (text.startsWith("/chroma database")) {
+        const v = text.slice("/chroma database".length).trim();
+        setChromaDatabase(v);
+        pushSystem(v ? "Chroma database set." : "Chroma database cleared.");
+        return;
+      }
+      if (text.startsWith("/pull ")) {
+        const name = text.slice("/pull ".length).trim();
+        if (!name || pullBusy) {
+          if (!name) pushSystem("Usage: /pull <model> e.g. llama3.2");
+          else pushSystem("Already pulling a model.");
+          return;
+        }
+        setPullBusy(true);
+        pushSystem(`Pulling ${name}…`);
+        void (async () => {
+          const lines: string[] = [];
+          try {
+            await streamOllamaPull(baseUrl, name, (line) => {
+              lines.push(line);
+            });
+            const tail = lines.slice(-12).join("\n");
+            pushSystem(
+              tail
+                ? `Pull log (last lines):\n${tail}`
+                : "Pull completed (no log lines). Run /models to refresh.",
+            );
+            try {
+              const list = await fetchModels(baseUrl);
+              setModels(list);
+              if (list.length && !model) setModel(list[0]!);
+            } catch {
+              /* ignore */
+            }
+          } catch (e) {
+            pushSystem(e instanceof Error ? e.message : String(e));
+          } finally {
+            setPullBusy(false);
+          }
+        })();
+        return;
+      }
+      if (text === "/tools") {
+        pushSystem(
+          "Custom skills are edited via the web UI (/tools opens Add tool). Files live on the server under the app’s skill storage.",
+        );
+        return;
+      }
+      if (text === "/delete-tool") {
+        pushSystem(
+          "Delete a skill from the web UI (/delete-tool) or remove the JSON file on the server.",
+        );
+        return;
+      }
 
-      if (busy) {
-        pushSystem("Wait for the current reply to finish.");
+      if (busy || pullBusy) {
+        pushSystem("Wait for the current reply or pull to finish.");
         return;
       }
       void runChat(text);
     },
-    [baseUrl, busy, exit, initialUrl, model, pushSystem, runChat],
+    [
+      baseUrl,
+      busy,
+      pullBusy,
+      chromaHdr,
+      exit,
+      initialUrl,
+      model,
+      pushSystem,
+      ragCollection,
+      regenerateLast,
+      runChat,
+      systemPrompt,
+      tavilyApiKey,
+      webSearch,
+    ],
   );
 
   return (
@@ -428,7 +905,21 @@ function App({ initialUrl }: { initialUrl: string }) {
             {webSearch ? "on" : "off"}
           </Text>
           <Text dimColor> · </Text>
-          <Text dimColor>{busy ? "streaming…" : "idle"}</Text>
+          <Text dimColor>{busy ? "streaming…" : pullBusy ? "pulling…" : "idle"}</Text>
+          <Text dimColor> · </Text>
+          <Text dimColor>sys </Text>
+          <Text color={systemPrompt.trim() ? "yellow" : "gray"}>
+            {systemPrompt.trim() ? "on" : "off"}
+          </Text>
+          <Text dimColor> · </Text>
+          <Text dimColor>rag </Text>
+          <Text color={ragCollection.trim() ? "magenta" : "gray"}>
+            {ragCollection.trim()
+              ? ragCollection.length > 14
+                ? `${ragCollection.slice(0, 12)}…`
+                : ragCollection
+              : "—"}
+          </Text>
         </Text>
       </Box>
 

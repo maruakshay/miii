@@ -15,13 +15,32 @@ const WEB_SEARCH_SUFFIX = `
 
 You have access to the tool \`tavily_web_search\` for live web search. Use it when the user needs current events, recent facts, or anything that should be verified online. After searching, answer clearly and cite what came from the results.`;
 
+const RAG_PREFIX = `
+
+The following excerpts were retrieved from the user's document collection (Chroma). Use them when relevant; if they conflict with the user, prefer the user. If nothing is relevant, ignore them.
+
+--- Retrieved context ---
+`;
+
 /** Full system prompt, optionally including web-search instructions when Tavily is enabled. */
 export function buildChatSystemMessage(options?: {
   webSearchEnabled?: boolean;
+  /** When set, replaces the default Miii persona (still adds web/RAG suffixes as needed). */
+  customSystemPrompt?: string | null;
+  /** Injected after the base persona when RAG returns snippets. */
+  ragContext?: string | null;
 }): SystemMessage {
-  const base = MIII_SYSTEM_PROMPT;
-  const text =
+  const base =
+    typeof options?.customSystemPrompt === "string" &&
+    options.customSystemPrompt.trim().length > 0
+      ? options.customSystemPrompt.trim()
+      : MIII_SYSTEM_PROMPT;
+  let text =
     options?.webSearchEnabled === true ? base + WEB_SEARCH_SUFFIX : base;
+  const rag = options?.ragContext?.trim();
+  if (rag) {
+    text = `${text}${RAG_PREFIX}${rag}\n--- End context ---`;
+  }
   return new SystemMessage(text);
 }
 

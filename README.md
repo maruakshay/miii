@@ -2,11 +2,14 @@
 ![miii web](public/ss1.png)
 ![miii terminal](public/ss2.png)
 
-> A local-first AI chat UI built to **simplify running LLMs locally** — with minimal setup and seamless usage.
+**Miii** is a **local-first AI workspace** for running models through **[Ollama](https://ollama.com)**—with **streaming replies**, **Markdown**, and optional **tools + RAG**, available in both a **Web UI** and a **terminal (TUI)**.
 
-miii is designed to **ease the installation and usage process**, eliminating the friction seen in tools like OpenClaw. With just a few integrations, it runs effortlessly via both a **Web UI and terminal**.
-
-It talks to **[Ollama](https://ollama.com)** through **[LangGraph](https://langchain-ai.github.io/langgraphjs/)**, with streamed replies and Markdown rendering. Built with [Next.js](https://nextjs.org) (App Router), React 19, Tailwind CSS 4, and UI primitives.
+### What you get
+- **Fast path to chatting** — pick a model, pull tags from the app, and stream responses over a simple HTTP API.
+- **Optional agent features** — **Tavily** web search and **custom tools** (JSON skills) wired through **LangGraph** when enabled.
+- **Document-aware answers** — **Chroma** RAG per conversation: ingest text/files, embed with Ollama, retrieve context for each turn.
+- **Two interfaces, one backend** — browser chat with shortcuts and slash menu; **Ink** TUI talking to the same server.
+Built with [Next.js](https://nextjs.org) (App Router), React 19, Tailwind CSS 4.
 
 **Author:** Akshay Maru
 

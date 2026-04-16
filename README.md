@@ -52,7 +52,7 @@ miii solves this by providing:
 
 ### Terminal UI (TUI)
 
-- OpenClaw-style CLI: header (URL, model, web search, system/RAG hints, status), transcript, and input — same HTTP API as the browser (default base `http://127.0.0.1:3000`). See [Terminal UI](#terminal-ui).
+- OpenClaw-style CLI: header (URL, model, web search, system/RAG hints, status), transcript, and input — same HTTP API as the browser. It talks to whatever base URL you configure; if you start the app with `npm run dev` and run the TUI with `npm run tui` in another terminal, that is usually the dev server on port **3000**. See [Terminal UI](#terminal-ui).
 - **Parity commands** — System prompt, RAG collection, Chroma headers, Tavily key for the session, **`/rag list`**, **`/pull <model>`**, **`/regenerate`**, etc. Use `/help` for the full list.
 
 ### Web UI shortcuts
@@ -79,10 +79,10 @@ Environment variables (optional unless noted):
 
 | Variable | Description |
 |----------|-------------|
-| `OLLAMA_BASE_URL` | Ollama API base URL (default: `http://127.0.0.1:11434`) |
+| `OLLAMA_BASE_URL` | Ollama API base URL (defaults match a local `ollama serve`; override e.g. `export OLLAMA_BASE_URL=http://127.0.0.1:11434`) |
 | `TAVILY_API_KEY` | Tavily API key when web search is on and no client key is sent |
-| `MIIIBOT_URL` | Base URL for the TUI client (default: `http://127.0.0.1:3000`) |
-| `CHROMA_URL` | Chroma HTTP API base (default: `http://127.0.0.1:8000`) |
+| `MIIIBOT_URL` | Base URL for the TUI client (override e.g. `MIIIBOT_URL=http://127.0.0.1:3000 npm run tui` or `npm run tui -- --url …`) |
+| `CHROMA_URL` | Chroma HTTP API base (local example: `export CHROMA_URL=http://127.0.0.1:8000`) |
 | `CHROMA_API_KEY` | Optional server default for Chroma token |
 | `CHROMA_TENANT` | Optional server default tenant |
 | `CHROMA_DATABASE` | Optional server default database |
@@ -92,13 +92,20 @@ Set values in `.env.local` as needed. For web search and Chroma headers you can 
 
 ## Terminal UI
 
-With the app running (`npm run dev` or `npm run start`), open another terminal:
+In one terminal, start the web server:
+
+```bash
+npm run dev
+# or: npm run build && npm run start
+```
+
+In **another** terminal, start the TUI (by default it uses the same host/port as a local **`npm run dev`** session — override if your server is elsewhere):
 
 ```bash
 npm run tui
 ```
 
-Defaults to **`http://127.0.0.1:3000`**. Override with:
+Point the TUI at a different base URL:
 
 ```bash
 MIIIBOT_URL=http://127.0.0.1:3000 npm run tui
@@ -119,22 +126,22 @@ Run the TUI in a **real interactive terminal** (not a pipe or some IDE panels); 
 
 ### One-line install (curl · global `miii`)
 
-After you push this repo to GitHub:
+The script clones the repo, runs **`npm install`**, then **`npm install -g .`**, which installs the **`miii`** CLI globally. Use **`miii help`**, **`miii web`**, or **`miii tui`** from any terminal afterward; if `miii` is not found, add npm’s global bin to `PATH` and open a new shell.
 
 ```bash
-curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/maruakshay/miii/main/scripts/install.sh | bash
+curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/akshaymaru-61/miii/main/scripts/install.sh | bash
 ```
 
-* Fork/different repo:
+- **Fork / different clone URL:**
 
 ```bash
-curl ... | env MIII_REPO_URL=https://github.com/you/miibot.git bash -s
+curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/akshaymaru-61/miii/main/scripts/install.sh | env MIII_REPO_URL=https://github.com/maruakshay/miii.git bash -s
 ```
 
-* Dry run:
+- **Dry run:**
 
 ```bash
-curl ... | bash -s -- --dry-run
+curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/akshaymaru-61/miii/main/scripts/install.sh | bash -s -- --dry-run
 ```
 
 Requires **Git**, **Node.js 20+**, and **npm**.

@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "chroma": "chroma run",
     "tui": "esbuild scripts/miii-tui.tsx --bundle --platform=node --format=esm --packages=external --outfile=scripts/.tui-bundle.mjs && node scripts/.tui-bundle.mjs"
   },
   "dependencies": {

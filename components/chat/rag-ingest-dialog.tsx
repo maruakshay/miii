@@ -120,8 +120,13 @@ export function RagIngestDialog({
           </DialogTitle>
         </DialogHeader>
         <p className="text-[13px] leading-relaxed text-[#6b6558]">
-          Use the sidebar <strong>Unlock</strong> button if Chroma Cloud needs
-          a token. Embeddings use Ollama (
+          Indexing runs on the Next.js server (it connects to Chroma, not the
+          browser). Start Chroma in another terminal (
+          <code className="rounded bg-white px-1 font-mono text-[12px]">
+            npm run chroma
+          </code>
+          ) and set the URL under sidebar <strong>Chroma</strong> if needed.
+          Use <strong>Unlock</strong> for Chroma Cloud. Embeddings use Ollama (
           <code className="rounded bg-white px-1 font-mono text-[12px]">
             OLLAMA_EMBED_MODEL
           </code>

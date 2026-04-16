@@ -202,7 +202,7 @@ export function ChatSidebar({
                   }
                   disabled={!hydrated || sending}
                   onClick={onOpenChromaKey}
-                  title="API token for Chroma Cloud (optional for local chroma run)"
+                  title="API token for Chroma Cloud (optional for local npm run chroma)"
                 >
                   <Key className="size-3" />
                   {chromaHasCredentials ? "Token" : "Unlock"}

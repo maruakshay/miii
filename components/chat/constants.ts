@@ -7,6 +7,7 @@ export const WEB_SEARCH_STORAGE = "miii.webSearch";
 export const CHROMA_KEY_STORAGE = "miii.chromaApiKey";
 export const CHROMA_TENANT_STORAGE = "miii.chromaTenant";
 export const CHROMA_DATABASE_STORAGE = "miii.chromaDatabase";
+export const CHROMA_URL_STORAGE = "miii.chromaBaseUrl";
 
 export const CMD_NO_MODEL = new Set([
   "/clear",

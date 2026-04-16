@@ -170,10 +170,12 @@ export function Chat() {
       <ChromaKeyDialog
         open={chat.chromaKeyDialogOpen}
         onOpenChange={chat.setChromaKeyDialogOpen}
+        initialChromaUrl={chat.chromaBaseUrl}
         initialApiKey={chat.chromaApiKey}
         initialTenant={chat.chromaTenant}
         initialDatabase={chat.chromaDatabase}
         onSave={(opts) => {
+          chat.setChromaBaseUrl(opts.chromaUrl);
           chat.setChromaApiKey(opts.apiKey);
           chat.setChromaTenant(opts.tenant);
           chat.setChromaDatabase(opts.database);

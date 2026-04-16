@@ -14,7 +14,12 @@ import {
 } from "@langchain/langgraph";
 import { ToolNode, toolsCondition } from "@langchain/langgraph/prebuilt";
 
+import type { ChatStreamPart } from "@/lib/chat-stream-types";
 import { loadAllChatTools } from "@/lib/chat-tools";
+import {
+  langchainMessagesToOllamaApi,
+  streamOllamaNativeChat,
+} from "@/lib/ollama-native-chat";
 import { getOllamaBaseUrl } from "@/lib/ollama";
 
 import type { StructuredToolInterface } from "@langchain/core/tools";
@@ -95,18 +100,16 @@ function compileGraph(tools: StructuredToolInterface[]) {
 }
 
 export type StreamChatOptions = {
-  /** User turned on web search in the UI. */
   webSearch?: boolean;
-  /** Optional Tavily API key from the client; falls back to \`TAVILY_API_KEY\` env on the server. */
   tavilyApiKey?: string | null;
 };
 
-/** Token stream for the API: streams LLM tokens (direct chat or agent+tools via LangGraph message stream). */
-export async function* streamChatTokens(
+/** Token + usage stream for `/api/chat` (NDJSON). */
+export async function* streamChatParts(
   messages: BaseMessage[],
   model: string,
   options?: StreamChatOptions,
-): AsyncGenerator<string, void, undefined> {
+): AsyncGenerator<ChatStreamPart, void, undefined> {
   const tools = await loadAllChatTools({
     webSearchRequested: options?.webSearch === true,
     tavilyApiKey: options?.tavilyApiKey,
@@ -114,11 +117,9 @@ export async function* streamChatTokens(
   const graph = compileGraph(tools);
 
   if (tools.length === 0) {
-    const llm = createOllamaChat(model.trim(), true);
-    const stream = await llm.stream(messages);
-    for await (const chunk of stream) {
-      const delta = chunkToDelta(chunk as AIMessageChunk);
-      if (delta) yield delta;
+    const ollamaMessages = langchainMessagesToOllamaApi(messages);
+    for await (const part of streamOllamaNativeChat(model.trim(), ollamaMessages)) {
+      yield part;
     }
     return;
   }
@@ -135,7 +136,7 @@ export async function* streamChatTokens(
       continue;
     }
     const delta = chunkToDelta(msg as AIMessageChunk);
-    if (delta) yield delta;
+    if (delta) yield { type: "token", t: delta };
   }
 }
 

@@ -2,7 +2,7 @@
 ![miii web](public/ss1.png)
 ![miii terminal](public/ss2.png)
 
-**Miii** is a privacy-first, local AI assistant with pluggable skills, semantic tool routing, and live web search — running 100% on your machine.**
+**Miii** is a privacy-first, local AI assistant with pluggable skills, semantic tool routing, and live web search — running 100% on your machine.
 
 ### What you get
 - **Fast path to chatting** — pick a model, pull tags from the app, and stream responses over a simple HTTP API.

@@ -2,249 +2,194 @@
 ![miii web](public/ss1.png)
 ![miii terminal](public/ss2.png)
 
-**Miii** is a privacy-first, local AI assistant with pluggable skills, semantic tool routing, and live web search — running 100% on your machine.
+Miii is a **privacy-first, local AI assistant** that pairs fast streaming chat with pluggable skills, semantic tool routing, and optional live web search — all running on your own machine.
 
-### What you get
-- **Fast path to chatting** — pick a model, pull tags from the app, and stream responses over a simple HTTP API.
-- **Optional agent features** — **Tavily** web search and **custom tools** (JSON skills) wired through **LangGraph** when enabled.
-- **Document-aware answers** — **Chroma** RAG per conversation: ingest text/files, embed with Ollama, retrieve context for each turn.
-- **Two interfaces, one backend** — browser chat with shortcuts and slash menu; **Ink** TUI talking to the same server.
-Built with [Next.js](https://nextjs.org) (App Router), React 19, Tailwind CSS 4.
+## Why Miii exists
 
-**Author:** Akshay Maru
+Traditional assistants ship every prompt to the cloud. Miii keeps your messages local while still giving you the flexibility of agentic tools, document-aware answers, and a modern UI.
 
+- ⚡ **Streamlined UX** — browser chat plus a terminal UI (Ink) backed by the same server and skills.
+- 🔌 **Composable intelligence** — define JSON skills, chain LangGraph actions, and optionally pull live Tavily search results.
+- 🧠 **Document-aware context** — Chroma-based RAG per conversation with Ollama embeddings.
+- 🛠️ **Developer-friendly** — streaming NDJSON, model picker, slash commands, and a CLI that installs globally.
 
-## Why miii?
+## Quick start
 
-Most AI assistants send your data to the cloud. Miii is different.
-
-Miii solves this by providing:
-
-- ⚡ **Minimal setup** — get started in minutes
-- 🔌 **Few integrations** — no heavy configuration
-- 🖥️ **Dual interface** — Web UI + Terminal (TUI)
-- 🧠 **Local-first architecture** — privacy-focused by default
-- 🚀 **Smooth developer experience** — streaming + Markdown out of the box
-
-## Architecture
- 
-```
-User Input
-    │
-    ▼
-Next.js App Router  ──────────────────────────────────────────┐
-    │                                                         │
-    ▼                                                         │
-/api/chat (streaming NDJSON)                                  │
-    │                                                         │
-    ▼                                                         │
-LangGraph Agent (lib/chat-graph.ts)                           │
-    │                                                         │
-    ├─── No tools active? ──► Stream directly from Ollama     │
-    │                                                         │
-    └─── Tools active? ──────► Agent → Tools loop             │
-                │                                             │
-                ├── Custom Skills (customTools/*.json)        │
-                │   └── Loaded as LangChain tools             │
-                │                                             │
-                └── Tavily Web Search (live results)          │
-                                                              │
-    ◄─────────────────────────────────────────────────────────┘
-Streamed response rendered with react-markdown (GFM)
-```
-
-## Features
-
-### 🧠 Agentic Tool Routing (LangGraph)
-When skills or web search are active, Miii runs a full LangGraph agent loop — it reasons, decides which tool to call, executes it, and synthesizes a response. When no tools are needed, it streams directly from Ollama for minimal latency.
- 
-### 🛠️ Custom Skills System
-Define your own AI skills as JSON files in `customTools/`. The app loads them as LangChain tools and makes them available to the agent. Add, manage, and delete skills via the in-app UI or `/tools` slash command.
- 
-```json
-// customTools/my-skill.json
-{
-  "name": "my_skill",
-  "description": "What this skill does — the LLM reads this to decide when to use it",
-  "createdAt": "2025-01-01T00:00:00.000Z"
-}
-```
- 
-Extend `skillToolFromDefinition` in `lib/custom-tools.ts` to wire in real execution logic.
- 
-### 🔍 Optional Live Web Search
-Enable [Tavily](https://tavily.com) web search from the UI. When active, Miii can fetch live results before responding — great for current events, documentation lookups, or anything beyond a model's training cutoff. Your API key stays in the browser.
- 
-### 💬 Conversation Management
-Multiple named conversations, persisted in the browser. Titles auto-generated from your first message. Clear individual chats or all history with `/clear`.
- 
-### 🖥️ Terminal UI (TUI)
-A full terminal interface built with [Ink](https://github.com/vadimdemedes/ink) — same API, same models, same skills, no browser needed.
- 
-### 🔄 Model Picker
-Lists all models pulled to your local Ollama server. Switch models mid-session from the UI or via `/model` in the TUI.
- 
-### ✨ Streamed Markdown Responses
-Responses stream token-by-token and render as rich Markdown (GFM) — code blocks, tables, lists, and all.
-
-### Web UI shortcuts
-
-| Shortcut | Action |
-| -------- | ------ |
-| **⌘N / Ctrl+N** | New chat |
-| **⌘K / Ctrl+K** | Open model picker |
-| **⌘/ / Ctrl+/** | Focus composer |
-| **⌘⇧P / Ctrl+Shift+P** | Pull model dialog |
-
-The composer supports a **slash menu** (type `/` at the start of a line) for quick inserts and actions (clear, tools, Tavily key, …).
-
-## Prerequisites
-
-- [Node.js](https://nodejs.org) 20+
-- [Ollama](https://ollama.com) installed and running, with at least one model pulled (for example `ollama pull llama3.2`)
-- For RAG: Chroma reachable locally or remotely. The **`chroma` CLI is not on your PATH** unless you install it globally; this repo already depends on **`chromadb`**, so start the server from the project root with **`npm run chroma`** (uses `node_modules/.bin/chroma`). Alternatively: `npx chroma run`. Default URL is `http://127.0.0.1:8000` (override with `CHROMA_URL`). For embeddings, use an Ollama embedding model (default `nomic-embed-text` unless overridden)—run e.g. `ollama pull nomic-embed-text`.
-
-
-## Configuration
-
-Environment variables (optional unless noted):
-
-| Variable | Description |
-|----------|-------------|
-| `OLLAMA_BASE_URL` | Ollama API base URL (defaults match a local `ollama serve`; override e.g. `export OLLAMA_BASE_URL=http://127.0.0.1:11434`) |
-| `TAVILY_API_KEY` | Tavily API key when web search is on and no client key is sent |
-| `MIIIBOT_URL` | Base URL for the TUI client (override e.g. `MIIIBOT_URL=http://127.0.0.1:3000 npm run tui` or `npm run tui -- --url …`) |
-| `CHROMA_URL` | Chroma HTTP API base (local example: `export CHROMA_URL=http://127.0.0.1:8000`) |
-| `CHROMA_API_KEY` | Optional server default for Chroma token |
-| `CHROMA_TENANT` | Optional server default tenant |
-| `CHROMA_DATABASE` | Optional server default database |
-| `OLLAMA_EMBED_MODEL` | Embedding model for RAG chunking/query (default: `nomic-embed-text`) |
-
-Set values in `.env.local` as needed. For web search and Chroma headers you can also save values in the app (stored locally in the browser). The TUI reads `TAVILY_API_KEY` from the **shell** environment at startup and can override with `/tavily set` for the session.
-
-## Terminal UI
-
-In one terminal, start the web server:
-
-```bash
-npm run dev
-# or: npm run build && npm run start
-```
-
-In **another** terminal, start the TUI (by default it uses the same host/port as a local **`npm run dev`** session — override if your server is elsewhere):
-
-```bash
-npm run tui
-```
-
-Point the TUI at a different base URL:
-
-```bash
-MIIIBOT_URL=http://127.0.0.1:3000 npm run tui
-npm run tui -- --url http://127.0.0.1:3000
-```
-
-Use **`/help`** inside the TUI for the full command list. Examples:
-
-- **`/model`**, **`/url`**, **`/web on|off`**, **`/tavily set`** (with your API key)
-- **`/system`**, **`/rag`**, **`/rag list`**, **`/chroma`**, **`/pull`** (e.g. `llama3.2`)
-- **`/new`**, **`/clear`**, **`/clear all`**, **`/regenerate`**, **`/quit`**
-
-Source: `scripts/miii-tui.tsx` (Ink); `npm run tui` bundles it with **esbuild** to ESM (`scripts/.tui-bundle.mjs`, gitignored).
-
-Run the TUI in a **real interactive terminal** (not a pipe or some IDE panels); Ink needs stdin raw mode.
-
-## Getting started
-
-### One-line install (curl · global `miii`)
-
-The script clones the repo, runs **`npm install`**, then **`npm install -g .`**, which installs the **`miii`** CLI globally. Use **`miii help`**, **`miii web`**, or **`miii tui`** from any terminal afterward; if `miii` is not found, add npm’s global bin to `PATH` and open a new shell.
-
-```bash
-curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/akshaymaru-61/miii/main/scripts/install.sh | bash
-```
-
-- **Fork / different clone URL:**
-
-```bash
-curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/akshaymaru-61/miii/main/scripts/install.sh | env MIII_REPO_URL=https://github.com/maruakshay/miii.git bash -s
-```
-
-- **Dry run:**
-
-```bash
-curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/akshaymaru-61/miii/main/scripts/install.sh | bash -s -- --dry-run
-```
-
-Requires **Git**, **Node.js 20+**, and **npm**.
-
-### From a clone
+### From source (recommended for contributors)
 
 ```bash
 npm install
 npm run dev
 ```
 
----
+The web UI launches at `http://localhost:3000`, and you can build your prompts, enable tools, and see streaming Markdown responses instantly.
 
-## Scripts
+### Terminal-first workflow (TUI)
 
-| Command         | Description           |
-| --------------- | --------------------- |
-| `npm run dev`   | Development server    |
-| `npm run build` | Production build      |
-| `npm run start` | Run production server |
-| `npm run lint`  | ESLint                |
-| `npm run chroma`| Local Chroma server (`chroma run`, default port 8000) for RAG |
-| `npm run tui`   | Terminal UI           |
+Run the TUI alongside the dev server:
 
+```bash
+npm run tui
+```
 
+Point it at a different host/port with `MIIIBOT_URL=http://127.0.0.1:3000 npm run tui` or `npm run tui -- --url ...`. Use `/help` inside the TUI for guidance.
+
+### One-line installer (install globally as `miii`)
+
+```bash
+curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/akshaymaru-61/miii/main/scripts/install.sh | bash
+```
+
+After installation you can run `miii web`, `miii tui`, or `miii help` from any terminal. Add `~/.npm-global/bin` (or wherever your npm global bin lives) to `PATH` if commands are missing.
+
+## Architecture at a glance
+
+```
+User Input
+    │
+    ▼
+Next.js App Router
+    │
+    ▼
+/api/chat (streaming NDJSON)
+    │
+    ▼
+LangGraph Agent ────┬──► Ollama streaming (no tools)
+                    │
+                    └──► Agent loop when tools / web search active
+                         │
+                         ├── Custom skills (`customTools/*.json` → LangChain)
+                         └── Tavily web search (live results)
+
+Response streams back to React renderer + Ink.
+```
+
+### Stack
+
+Built with [Next.js App Router](https://nextjs.org), React 19, Tailwind CSS 4, Ink for the TUI, LangGraph, and Ollama for the local models.
+
+## Features
+
+### Agentic tool routing
+Miii uses LangGraph to decide when to run a tool (custom skill, web search) and when to stream directly from Ollama, giving you the best of both speed and flexibility.
+
+### Custom skills
+Drop JSON tool definitions into `customTools/` and the UI will treat them as LangChain tools. Extend `lib/custom-tools.ts` to hook in actual execution logic if you need real-world actions.
+
+Example definition:
+
+```json
+{
+  "name": "my_skill",
+  "description": "Explain how this skill works",
+  "createdAt": "2025-01-01T00:00:00.000Z"
+}
+```
+
+Add, edit, or delete tools via the slash menu (`/tools`) or the dedicated UI panels.
+
+### Optional live web search
+Flip on Tavily web search from the UI (or set `TAVILY_API_KEY` in env). Miii will pull live search snippets before composing an answer so you can stay current despite model cutoffs. Keys stay in the browser unless you share them server-side.
+
+### Model picker and slash menu
+Switch models on the fly (`/model` in the TUI or picker in the browser). The composer supports `/` commands for clearing chats, managing tools, toggling web search, and more.
+
+### Shared memory
+Two frontends (browser + TUI) talk to the same backend, share conversations, and stream Markdown (GFM) token-by-token, including tables, code blocks, and lists.
+
+## Configuration
+
+| Variable | Meaning |
+|----------|---------|
+| `OLLAMA_BASE_URL` | Override Ollama server URL (defaults to local `ollama serve`). |
+| `TAVILY_API_KEY` | Tavily key for server-side web search. Browser keys stay client-local. |
+| `MIIIBOT_URL` | Base URL for the TUI client (`npm run tui`). |
+| `CHROMA_URL` | Chroma HTTP API (`http://127.0.0.1:8000` by default). |
+| `CHROMA_API_KEY`, `CHROMA_TENANT`, `CHROMA_DATABASE` | Optional Chroma defaults. |
+| `OLLAMA_EMBED_MODEL` | Embedding model for RAG (defaults to `nomic-embed-text`). |
+
+Store overrides in `.env.local` or configure through the web UI / TUI (Chroma and Tavily headers persist in browser local storage).
+
+## Running Chroma
+
+The repo bundles `chromadb` as a dependency. Start the Chroma service from the project root:
+
+```bash
+npm run chroma
+```
+
+This runs `node_modules/.bin/chroma` on port 8000. You can also use `npx chroma run` or point to a remote server with `CHROMA_URL`.
 
 ## Slash commands
 
-### Web UI (composer)
-
-Sending a message that is exactly one of these runs the action instead of chatting:
+Send these from the composer for quick actions:
 
 | Command | Action |
 | ------- | ------ |
-| `/clear` | Clear the current conversation’s messages |
-| `/clear all` | Reset to default conversations (all chats) |
-| `/tools` | Open **Add tool** (custom skill) |
-| `/delete-tool` | Open **Delete tool** |
-| `/web` | Open Tavily API key dialog |
+| `/clear` | Clear current conversation messages. |
+| `/clear all` | Reset the browser to default chats. |
+| `/tools` | Open Add Tool dialog (custom skills). |
+| `/delete-tool` | Open Delete Tool dialog. |
+| `/web` | Open Tavily key dialog. |
 
-The composer also supports a **`/` menu** (slash autocomplete) for the same actions and quick inserts.
+The TUI exposes additional CLI-friendly commands like `/rag list`, `/pull`, `/chroma`, `/regenerate`, and `/system`.
 
-### TUI
+## Terminal UI commands
 
-Type **`/help`** for the authoritative list. The TUI adds CLI-oriented commands (e.g. **`/rag list`**, **`/pull`**, **`/chroma`**, **`/regenerate`**) and points document **ingest** at the web UI where multipart upload is used.
+While connected to the server the TUI supports `/model`, `/url`, `/web on|off`, `/tavily set`, `/rag`, `/clear`, `/new`, `/quit`, and more. Use `/help` inside the TUI for the authoritative list.
 
-## Project layout (high level)
+## Custom skills wiring
 
-| Path                          | Role |
-| ----------------------------- | ---- |
-| `app/api/chat`                | Stream chat (Ollama + optional tools/RAG) |
-| `app/api/models`              | List models |
-| `app/api/ollama/pull`         | Proxy Ollama model pull (streaming) |
-| `app/api/rag/collections`     | List Chroma collections |
-| `app/api/rag/ingest`          | Ingest text/files into a collection |
-| `app/api/custom-tools`        | Manage JSON tools |
-| `lib/chat-graph.ts`           | LangGraph logic |
-| `lib/chat-tools.ts`           | Tool merging |
-| `lib/custom-tools.ts`         | Tool definitions |
-| `lib/rag-chroma.ts`           | Chroma client, query & ingest |
-| `lib/tavily-tool.ts`          | Tavily integration |
-| `lib/messages.ts`             | System prompts |
-| `lib/conversation-storage.ts` | Local storage |
-| `customTools/`                | JSON tools |
-| `components/chat/`            | Chat UI |
-| `scripts/miii-tui.tsx`        | TUI |
+1. Create or edit a JSON file under `customTools/` with `name`, `description`, and metadata.
+2. Update `lib/custom-tools.ts` if the tool needs to call real code (e.g., shelling out, querying local data, etc.).
+3. Navigate to the Tools menu in the UI or use `/tools` to activate it for the agent loop.
 
-## Roadmap
- 
-- [ ] Persistent skill execution (connect real logic to custom tool stubs)
-- [ ] ChromaDB semantic skill retrieval (automatic tool selection by embedding similarity)
-- [ ] File/document ingestion — chat with your local PDFs and notes
-- [ ] Multi-turn memory across conversations
-- [ ] Docker Compose setup for one-command start
+Custom skills behave like LangChain tools and can be combined with LangGraph reasoning for rich workflows.
+
+## Contributing to Miii
+
+We welcome contributors!
+
+1. Fork the repo and open a pull request against `main`.
+2. Run `npm run lint` and `npm run test` (if tests exist) before submitting.
+3. Propose new features (new tools, UI improvements, docs updates) by opening an issue first if the scope is large.
+4. Help triage issues, answer questions, or write docs — every contribution is valuable.
+
+## Project layout
+
+| Path | Role |
+| ---- | ---- |
+| `app/api/chat` | Streaming chat backbone (Ollama + LangGraph). |
+| `app/api/models` | Lists local Ollama models. |
+| `app/api/ollama/pull` | Streams `ollama pull` progress. |
+| `app/api/rag/collections` | List Chroma collections. |
+| `app/api/rag/ingest` | Ingest text/files for RAG. |
+| `app/api/custom-tools` | CRUD for JSON skills. |
+| `lib/chat-graph.ts` | LangGraph agent setup. |
+| `lib/chat-tools.ts` | Tool merging logic. |
+| `lib/custom-tools.ts` | Tool definitions loader. |
+| `lib/rag-chroma.ts` | Chroma client helpers. |
+| `lib/tavily-tool.ts` | Tavily web search integration. |
+| `lib/messages.ts` | System prompts. |
+| `lib/conversation-storage.ts` | Local storage helpers. |
+| `customTools/` | JSON skill definitions. |
+| `components/chat/` | Browser chat client. |
+| `scripts/miii-tui.tsx` | Ink-based TUI entrypoint. |
+
+## Roadmap highlights
+
+- [ ] Persistent skill workers (real execution logic behind custom tools).
+- [ ] ChromaDB semantic skill retrieval (auto tool selection via embeddings).
+- [ ] Document ingestion (PDFs, notes, and local files) through the UI.
+- [ ] Multi-turn memory across conversations.
+- [ ] Docker Compose for single-command bootstrapping.
+
+## Need help?
+
+- Ask questions in the repository discussions or open an issue with the `support` label.
+- Bring feature ideas and bug reports to GitHub — we track them in `Issues`.
+- Want to sponsor ongoing work? See [GitHub Sponsors](https://github.com/sponsors/akshaymaru-61).
+
+## License
+
+Miii is open source under the [MIT License](LICENSE).

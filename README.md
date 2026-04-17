@@ -2,7 +2,7 @@
 ![miii web](public/ss1.png)
 ![miii terminal](public/ss2.png)
 
-**Miii** is a **local-first AI workspace** for running models through **[Ollama](https://ollama.com)**—with **streaming replies**, **Markdown**, and optional **tools + RAG**, available in both a **Web UI** and a **terminal (TUI)**.
+**Miii** is a privacy-first, local AI assistant with pluggable skills, semantic tool routing, and live web search — running 100% on your machine.**
 
 ### What you get
 - **Fast path to chatting** — pick a model, pull tags from the app, and stream responses over a simple HTTP API.
@@ -16,9 +16,9 @@ Built with [Next.js](https://nextjs.org) (App Router), React 19, Tailwind CSS 4.
 
 ## Why miii?
 
-Most local LLM tools require **complex setup, multiple dependencies, and fragmented workflows**.
+Most AI assistants send your data to the cloud. Miii is different.
 
-miii solves this by providing:
+Miii solves this by providing:
 
 - ⚡ **Minimal setup** — get started in minutes
 - 🔌 **Few integrations** — no heavy configuration
@@ -26,34 +26,66 @@ miii solves this by providing:
 - 🧠 **Local-first architecture** — privacy-focused by default
 - 🚀 **Smooth developer experience** — streaming + Markdown out of the box
 
+## Architecture
+ 
+```
+User Input
+    │
+    ▼
+Next.js App Router  ──────────────────────────────────────────┐
+    │                                                         │
+    ▼                                                         │
+/api/chat (streaming NDJSON)                                  │
+    │                                                         │
+    ▼                                                         │
+LangGraph Agent (lib/chat-graph.ts)                           │
+    │                                                         │
+    ├─── No tools active? ──► Stream directly from Ollama     │
+    │                                                         │
+    └─── Tools active? ──────► Agent → Tools loop             │
+                │                                             │
+                ├── Custom Skills (customTools/*.json)        │
+                │   └── Loaded as LangChain tools             │
+                │                                             │
+                └── Tavily Web Search (live results)          │
+                                                              │
+    ◄─────────────────────────────────────────────────────────┘
+Streamed response rendered with react-markdown (GFM)
+```
+
 ## Features
 
-### Chat & models
-
-- **Model picker** — Lists tags from your local Ollama server (`GET /api/models`).
-- **Pull models** — Download an Ollama tag from the app (`POST /api/ollama/pull`, streaming NDJSON from Ollama). In the web UI: sidebar **Pull model** or **⌘⇧P / Ctrl+Shift+P**.
-- **Streaming assistant responses** — NDJSON over `POST /api/chat` (`Accept: application/x-ndjson`).
-- **Markdown in messages** — GFM via `react-markdown` + `remark-gfm`.
-- **Miii persona** — Default system prompt in `lib/messages.ts`; you can override it **per conversation** in the sidebar (**System prompt**).
-- **Conversations** — Multiple chats with titles derived from messages; state persisted in the browser (`localStorage`, see `lib/conversation-storage.ts`).
-- **Edit & regenerate (web)** — Edit a user message or regenerate the last assistant reply from the message list.
-
-### Tools & search
-
-- **Optional web search** — When enabled, the stack can use **`tavily_web_search`** ([Tavily](https://tavily.com)) for live results. Requires a Tavily API key (saved in the browser and/or `TAVILY_API_KEY` on the server). Toggle **Web** in the sidebar or use slash commands (below).
-- **Custom skills (tools)** — JSON definitions under `customTools/` are loaded as LangChain tools; manage them via `/api/custom-tools` and the in-app **Add tool** / **Delete tool** dialogs (or `/tools` / `/delete-tool`). Default execution is a **placeholder**; extend `skillToolFromDefinition` in `lib/custom-tools.ts` for real behavior.
-- **LangGraph routing** — With no tools, the app streams directly from Ollama. When custom skills and/or Tavily are active, a LangGraph agent runs (`agent` → `tools` loop, `streamMode: "messages"`).
-
-### RAG (Chroma)
-
-- **Document context** — Optional **[Chroma](https://www.trychroma.com/)** collection per conversation. The last user message is embedded, relevant chunks are retrieved, and context is injected into the system message for that request.
-- **Credentials** — Chroma Cloud / multi-tenant headers (token, tenant, database) can be set in the app and are sent with chat and RAG API calls; optional server-side defaults via env (see [Configuration](#configuration)).
-- **Ingest** — **Index into Chroma** in the sidebar uploads pasted text or files (`POST /api/rag/ingest`); requires a running Chroma (from the repo: `npm run chroma`, or `npx chroma run` after `npm install`) or a reachable `CHROMA_URL`.
-
-### Terminal UI (TUI)
-
-- OpenClaw-style CLI: header (URL, model, web search, system/RAG hints, status), transcript, and input — same HTTP API as the browser. It talks to whatever base URL you configure; if you start the app with `npm run dev` and run the TUI with `npm run tui` in another terminal, that is usually the dev server on port **3000**. See [Terminal UI](#terminal-ui).
-- **Parity commands** — System prompt, RAG collection, Chroma headers, Tavily key for the session, **`/rag list`**, **`/pull <model>`**, **`/regenerate`**, etc. Use `/help` for the full list.
+### 🧠 Agentic Tool Routing (LangGraph)
+When skills or web search are active, Miii runs a full LangGraph agent loop — it reasons, decides which tool to call, executes it, and synthesizes a response. When no tools are needed, it streams directly from Ollama for minimal latency.
+ 
+### 🛠️ Custom Skills System
+Define your own AI skills as JSON files in `customTools/`. The app loads them as LangChain tools and makes them available to the agent. Add, manage, and delete skills via the in-app UI or `/tools` slash command.
+ 
+```json
+// customTools/my-skill.json
+{
+  "name": "my_skill",
+  "description": "What this skill does — the LLM reads this to decide when to use it",
+  "createdAt": "2025-01-01T00:00:00.000Z"
+}
+```
+ 
+Extend `skillToolFromDefinition` in `lib/custom-tools.ts` to wire in real execution logic.
+ 
+### 🔍 Optional Live Web Search
+Enable [Tavily](https://tavily.com) web search from the UI. When active, Miii can fetch live results before responding — great for current events, documentation lookups, or anything beyond a model's training cutoff. Your API key stays in the browser.
+ 
+### 💬 Conversation Management
+Multiple named conversations, persisted in the browser. Titles auto-generated from your first message. Clear individual chats or all history with `/clear`.
+ 
+### 🖥️ Terminal UI (TUI)
+A full terminal interface built with [Ink](https://github.com/vadimdemedes/ink) — same API, same models, same skills, no browser needed.
+ 
+### 🔄 Model Picker
+Lists all models pulled to your local Ollama server. Switch models mid-session from the UI or via `/model` in the TUI.
+ 
+### ✨ Streamed Markdown Responses
+Responses stream token-by-token and render as rich Markdown (GFM) — code blocks, tables, lists, and all.
 
 ### Web UI shortcuts
 
@@ -208,3 +240,11 @@ Type **`/help`** for the authoritative list. The TUI adds CLI-oriented commands 
 | `customTools/`                | JSON tools |
 | `components/chat/`            | Chat UI |
 | `scripts/miii-tui.tsx`        | TUI |
+
+## Roadmap
+ 
+- [ ] Persistent skill execution (connect real logic to custom tool stubs)
+- [ ] ChromaDB semantic skill retrieval (automatic tool selection by embedding similarity)
+- [ ] File/document ingestion — chat with your local PDFs and notes
+- [ ] Multi-turn memory across conversations
+- [ ] Docker Compose setup for one-command start
